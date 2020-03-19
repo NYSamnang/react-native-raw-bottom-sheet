@@ -19,24 +19,51 @@ const SUPPORTED_ORIENTATIONS = [
   "landscape-right"
 ];
 
+const SUPPORTED_COMPONENTS_CLOSEONDRAGDOWN = [
+  'ScrollView',
+  'FlatList',
+];
+
 class RBSheet extends Component {
   constructor(props) {
     super(props);
     this.state = {
       modalVisible: false,
       animatedHeight: new Animated.Value(0),
-      pan: new Animated.ValueXY()
+      pan: new Animated.ValueXY(),
+      hasScrollView: false
     };
 
     this.createPanResponder(props);
   }
 
-  setModalVisible(visible, additionalData = null) {
-    const { height, minClosingHeight, duration, onClose, onOpen } = this.props;
+  componentDidMount(){
+    let children = this.props.children;
+    if( typeof children === "object"  && (children !== null) ){
+      let childrenName = children.type ? children.type.displayName || null : null;
+      if(SUPPORTED_COMPONENTS_CLOSEONDRAGDOWN.includes(childrenName)){
+        this.setState({
+          hasScrollView: true
+        });
+      }
+    }
+    else if(typeof children === 'array' && children.length > 0){
+      for (var i = 0; i < children.length; i++) {
+        let childrenName = children[i].type ? children[i].type.displayName || null : null;
+        if(SUPPORTED_COMPONENTS_CLOSEONDRAGDOWN.includes(childrenName)){
+          this.setState({
+            hasScrollView: true
+          });
+        }
+      }
+    }
+  }
+
+  setModalVisible(visible) {
+    const { height, minClosingHeight, duration, onClose } = this.props;
     const { animatedHeight, pan } = this.state;
     if (visible) {
       this.setState({ modalVisible: visible });
-      if (typeof onOpen === "function") onOpen(additionalData);
       Animated.timing(animatedHeight, {
         toValue: height,
         duration
@@ -77,8 +104,8 @@ class RBSheet extends Component {
     });
   }
 
-  open(additionnalData) {
-    this.setModalVisible(true, additionnalData);
+  open() {
+    this.setModalVisible(true);
   }
 
   close() {
@@ -92,13 +119,20 @@ class RBSheet extends Component {
       closeOnPressMask,
       closeOnPressBack,
       children,
-      customStyles,
-      keyboardAvoidingViewEnabled
+      customStyles
     } = this.props;
-    const { animatedHeight, pan, modalVisible } = this.state;
+    const { animatedHeight, pan, modalVisible, hasScrollView } = this.state;
     const panStyle = {
       transform: pan.getTranslateTransform()
     };
+
+    let draggableIcon = (closeOnDragDown && hasScrollView ? (
+      <View {...this.panResponder.panHandlers} style={styles.draggableContainer}>
+        <View style={[styles.draggableIcon, customStyles.draggableIcon]} />
+      </View>
+    ) : closeOnDragDown ? <View style={styles.draggableContainer}>
+      <View style={[styles.draggableIcon, customStyles.draggableIcon]} />
+    </View> : null)
 
     return (
       <Modal
@@ -111,7 +145,7 @@ class RBSheet extends Component {
         }}
       >
         <KeyboardAvoidingView
-          enabled={keyboardAvoidingViewEnabled}
+          enabled={Platform.OS === "ios"}
           behavior="padding"
           style={[styles.wrapper, customStyles.wrapper]}
         >
@@ -120,17 +154,24 @@ class RBSheet extends Component {
             activeOpacity={1}
             onPress={() => (closeOnPressMask ? this.close() : null)}
           />
+        {
+          closeOnDragDown && hasScrollView ? (
+            <Animated.View
+              style={[panStyle, styles.container, { height: animatedHeight }, customStyles.container]}
+            >
+              {draggableIcon}
+              {children}
+            </Animated.View>
+          ) : (
           <Animated.View
             {...this.panResponder.panHandlers}
             style={[panStyle, styles.container, { height: animatedHeight }, customStyles.container]}
           >
-            {closeOnDragDown && (
-              <View style={styles.draggableContainer}>
-                <View style={[styles.draggableIcon, customStyles.draggableIcon]} />
-              </View>
-            )}
+            {draggableIcon}
             {children}
-          </Animated.View>
+          </Animated.View>)
+        }
+
         </KeyboardAvoidingView>
       </Modal>
     );
@@ -145,10 +186,8 @@ RBSheet.propTypes = {
   closeOnDragDown: PropTypes.bool,
   closeOnPressMask: PropTypes.bool,
   closeOnPressBack: PropTypes.bool,
-  keyboardAvoidingViewEnabled: PropTypes.bool,
   customStyles: PropTypes.objectOf(PropTypes.object),
   onClose: PropTypes.func,
-  onOpen: PropTypes.func,
   children: PropTypes.node
 };
 
@@ -160,7 +199,6 @@ RBSheet.defaultProps = {
   closeOnDragDown: false,
   closeOnPressMask: true,
   closeOnPressBack: true,
-  keyboardAvoidingViewEnabled: Platform.OS === "ios",
   customStyles: {},
   onClose: null,
   children: <View />
